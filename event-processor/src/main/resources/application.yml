@@ -1,0 +1,34 @@
+spring:
+  application:
+    name: event-processor
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/fllets
+    username: fleet_user
+    password: fleet_pass
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate       # or update during dev
+    show-sql: true             # optional (debug SQL)
+    properties:
+      hibernate.format_sql: true
+      hibernate.jdbc.time_zone: UTC
+      hibernate.physical_naming_strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+# Kafka connection (dual-listener setup)
+kafka:
+  bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9093}
+
+app:
+  topic:
+    telemetry: telemetry.raw
+  rules:
+    overheat-threshold: 110

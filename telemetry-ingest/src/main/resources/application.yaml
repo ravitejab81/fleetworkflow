@@ -1,0 +1,22 @@
+spring:
+ application:
+  name: telemetry-ingest
+server:
+ port: 8081
+
+management:
+ endpoints:
+  web:
+   exposure:
+    include: health,info,metrics
+ endpoint:
+  health:
+   show-details: when_authorized
+
+app:
+ topic:
+  telemetry: telemetry.raw
+
+# Default points to local docker Kafka.
+kafka:
+ bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
