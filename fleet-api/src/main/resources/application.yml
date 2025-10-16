@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: event-processor
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/fllets
+    username: fleet_user
+    password: fleet_pass
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate       # or update during dev
+    show-sql: true             # optional (debug SQL)
+    properties:
+      hibernate.format_sql: true
+      hibernate.jdbc.time_zone: UTC
+      hibernate.physical_naming_strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+
+server.port: 8080
+
+
+
+# GraphQL endpoints (default: POST /graphql). Enable GraphiQL playground.
+spring.graphql:
+  graphiql:
+    enabled: true   # http://localhost:8080/graphiq

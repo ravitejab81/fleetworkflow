@@ -1,0 +1,43 @@
+""" Vehicle point-in-time status """
+type VehicleStatus {
+  vin: ID!
+  ts: String!          # ISO-8601
+  odoKm: Int
+  coolantTempC: Int
+  fuelPct: Int
+  lat: Float
+  lon: Float
+}
+
+""" Incident raised by rules (e.g., OVERHEAT) """
+type Incident {
+  incidentId: ID!
+  vin: ID!
+  kind: String
+  severity: String
+  status: String
+  openedAt: String
+  closedAt: String
+}
+
+type Query {
+  """Latest status for a VIN (404 -> null)"""
+  latestStatus(vin: ID!): VehicleStatus
+
+  """Status history for a VIN (paged, newest first)"""
+  statusHistory(vin: ID!, page: Int = 0, size: Int = 50): [VehicleStatus!]!
+
+  """All open incidents (paged, newest first)"""
+  openIncidents(page: Int = 0, size: Int = 50): [Incident!]!
+
+  """Incidents for a VIN (paged, newest first)"""
+  incidentsByVin(vin: ID!, page: Int = 0, size: Int = 50): [Incident!]!
+}
+
+type Mutation {
+  """(Optional) close an incident"""
+  closeIncident(id: ID!): Boolean!
+}
+
+# Scalars
+scalar Long
