@@ -1,0 +1,162 @@
+services:
+  # --- Infra: ZK + Kafka (dual listeners) ---
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "echo ruok | nc -w 2 localhost 2181 | grep imok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - "9092:9092"      # internal for containers (also published for convenience)
+      - "9093:9093"      # host access (if you run apps on host)
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # Two listeners: one for Docker network, one for host
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # Single node dev
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    healthcheck:
+      test: ["CMD", "bash", "-lc", "kafka-broker-api-versions --bootstrap-server localhost:9092 | grep 'id:1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: kafka-ui
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - "8085:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      DYNAMIC_CONFIG_ENABLED: "true"
+
+  # --- Postgres + pgAdmin ---
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    environment:
+      POSTGRES_USER: fleet_user
+      POSTGRES_PASSWORD: fleet_pass
+      POSTGRES_DB: fllets
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U fleet_user -d fllets"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  pgadmin:
+    image: dpage/pgadmin4:8.12
+    container_name: pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "8086:80"
+    volumes:
+      - ./pgadmin:/var/lib/pgadmin
+
+  # --- One-off: create Kafka topics ---
+  kafka-init:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash","-lc"]
+    command: >
+      "
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic telemetry.raw --partitions 3 --replication-factor 1 &&
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic incident.events --partitions 3 --replication-factor 1 &&
+      echo 'Kafka topics ready'
+      "
+    restart: "no"
+
+  # --- Your microservices (built from source) ---
+  telemetry-ingest:
+    build:
+      context: ../projects/telemetry-ingest         # <-- adjust path
+      dockerfile: Dockerfile
+    container_name: telemetry-ingest
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      # Inside Docker, point to kafka:9092
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      # App-specific: topic override if you used props
+      APP_TOPIC_TELEMETRY: telemetry.raw
+    ports:
+      - "8081:8081"
+
+  event-processor:
+    build:
+      context: ../projects/event-processor          # <-- adjust path
+    container_name: event-processor
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/fllets
+      SPRING_DATASOURCE_USERNAME: fleet_user
+      SPRING_DATASOURCE_PASSWORD: fleet_pass
+      APP_TOPIC_TELEMETRY: telemetry.raw
+      APP_TOPIC_INCIDENTEVENTS: incident.events
+    ports:
+      - "8082:8082"
+
+  fleet-api:
+    build:
+      context: ../projects/fleet-api                 # <-- adjust path
+    container_name: fleet-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/fllets
+      SPRING_DATASOURCE_USERNAME: fleet_user
+      SPRING_DATASOURCE_PASSWORD: fleet_pass
+      SPRING_GRAPHQL_GRAPHIQL_ENABLED: "true"
+      SERVER_PORT: 8080
+    ports:
+      - "8080:8080"
+
+# Persist data locally
+volumes: {}

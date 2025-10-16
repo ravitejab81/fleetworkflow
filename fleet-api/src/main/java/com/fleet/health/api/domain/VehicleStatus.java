@@ -1,5 +1,5 @@
+// src/main/java/com/fleet/health/api/domain/VehicleStatus.java
 package com.fleet.health.api.domain;
-
 
 import jakarta.persistence.*;
 
@@ -14,6 +14,14 @@ public class VehicleStatus {
     private Double lat;
     private Double lon;
 
+    // === Add these two transient getters ===
+    @Transient
+    public String getVin() { return id != null ? id.getVin() : null; }
+
+    @Transient
+    public String getTs()  { return (id != null && id.getTs()!=null) ? id.getTs().toString() : null; }
+
+    // existing getters/setters...
     public VehicleStatusId getId(){ return id; }
     public void setId(VehicleStatusId id){ this.id=id; }
     public Long getOdoKm(){ return odoKm; }
